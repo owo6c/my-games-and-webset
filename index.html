@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Full Game</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        canvas { border: 1px solid black; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let obstacles = [];
+        let lastSpawnTime = 0;
+        let animationFrameId;
+
+        function spawnObstacle() {
+            const obstacle = { x: canvas.width, y: Math.random() * canvas.height, width: 50, height: 50 };
+            obstacles.push(obstacle);
+        }
+
+        function gameLoop(timestamp) {
+            // Manage obstacle spawning timing
+            if (timestamp - lastSpawnTime > 1000) { // Spawn every 1 second
+                spawnObstacle();
+                lastSpawnTime = timestamp;
+            }
+
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw obstacles and manage performance
+            obstacles.forEach((obstacle, index) => {
+                ctx.fillStyle = 'red';
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                obstacle.x -= 5; // Move obstacle to the left
+
+                // Remove off-screen obstacles
+                if (obstacle.x + obstacle.width < 0) {
+                    obstacles.splice(index, 1);
+                }
+            });
+
+            // Request the next frame
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
