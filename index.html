@@ -1,55 +1,308 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Full Game</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        canvas { border: 1px solid black; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>مغامرة القفز | Riko 🚀</title>
+<style>
+:root {
+  --primary-color: #ff4757;
+  --bg-color: #70a1ff;
+}
+
+body {
+  text-align: center;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: var(--bg-color);
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+#gameContainer {
+  position: relative;
+  width: 95%;
+  max-width: 600px;
+  height: 300px;
+  margin: 20px auto 10px auto;
+  background: linear-gradient(to bottom, #87CEEB 0%, #E0F6FF 100%);
+  border: 4px solid #2f3542;
+  border-radius: 15px;
+  overflow: hidden;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+}
+
+/* توقيع المطور */
+.dev-credit {
+  font-size: 14px;
+  color: white;
+  background: rgba(0, 0, 0, 0.3);
+  display: inline-block;
+  padding: 5px 15px;
+  border-radius: 20px;
+  margin-top: 5px;
+  letter-spacing: 1px;
+}
+
+.dev-credit b {
+  color: #feca57;
+}
+
+/* السحب في الخلفية */
+.cloud {
+  position: absolute;
+  background: white;
+  width: 50px;
+  height: 20px;
+  border-radius: 20px;
+  opacity: 0.8;
+  animation: moveClouds 10s linear infinite;
+}
+
+@keyframes moveClouds {
+  from { right: -60px; }
+  to { right: 100%; }
+}
+
+#player {
+  width: 40px;
+  height: 40px;
+  background: radial-gradient(circle at 30% 30%, #ff6b81 0%, var(--primary-color) 70%);
+  position: absolute;
+  bottom: 0;
+  left: 50px;
+  border-radius: 50%;
+  box-shadow: 0 5px 10px rgba(0,0,0,0.3), inset -3px -3px rgba(255,255,255,0.4);
+  z-index: 5;
+  overflow: hidden;
+  transition: transform 0.1s ease;
+}
+
+/* العيون والوجه */
+#player::before {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  top: 10px;
+  left: 10px;
+  box-shadow: 12px 0 #fff, /* العين التانية */
+              6px 6px 0 2px #2f3542; /* الابتسامة */
+}
+
+/* Animation للقفز */
+.jump-animation {
+  animation: bounce 0.3s ease;
+}
+
+@keyframes bounce {
+  0% { transform: scale(1, 1); }
+  50% { transform: scale(1.2, 0.8); }
+  100% { transform: scale(1, 1); }
+}
+
+.obstacle {
+  width: 30px;
+  height: 40px;
+  background: #2f3542;
+  position: absolute;
+  bottom: 0;
+  border-radius: 5px 5px 0 0;
+}
+
+#ui-layer {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+#scoreBoard {
+  font-size: 20px;
+  font-weight: bold;
+  color: #2f3542;
+}
+
+.btn {
+  padding: 15px 40px;
+  font-size: 20px;
+  cursor: pointer;
+  background: #2ed573;
+  color: white;
+  border: none;
+  border-radius: 50px;
+  box-shadow: 0 5px 0 #26af5c;
+  transition: 0.1s;
+}
+
+.btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #26af5c;
+}
+</style>
 </head>
-<body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        let obstacles = [];
-        let lastSpawnTime = 0;
-        let animationFrameId;
+<body onclick="jump()">
+<h2 style="color: white; text-shadow: 2px 2px #333; margin-bottom: 5px;">مغامرة القفز السريعة 🎮</h2>
 
-        function spawnObstacle() {
-            const obstacle = { x: canvas.width, y: Math.random() * canvas.height, width: 50, height: 50 };
-            obstacles.push(obstacle);
+<div id="gameContainer">
+    <div id="ui-layer">
+        <button id="startBtn" class="btn" onclick="startGame(event)">ابدأ اللعبة 🔊</button>
+    </div>
+     
+    <div class="cloud" style="top: 20px; animation-duration: 15s;"></div>
+    <div class="cloud" style="top: 50px; animation-duration: 25s; opacity: 0.5;"></div>  
+
+    <div id="player"></div>
+</div>
+
+<div id="scoreBoard">النقاط: 0 | الأفضل: 0</div>
+ 
+<div class="dev-credit">تم تطويرها بواسطة <b>Riko</b></div>
+
+<audio id="bgMusic" loop>
+    <source src="https://www.soundjay.com/free-music/sounds/barn-beat-01.mp3" type="audio/mpeg">
+</audio>
+<audio id="jumpSound">
+    <source src="https://www.soundjay.com/button/sounds/button-16.mp3" type="audio/mpeg">
+</audio>
+<audio id="hitSound">
+    <source src="https://www.soundjay.com/button/sounds/button-10.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+const player = document.getElementById("player");
+const gameContainer = document.getElementById("gameContainer");
+const scoreBoard = document.getElementById("scoreBoard");
+const startBtn = document.getElementById("startBtn");
+
+const bgMusic = document.getElementById("bgMusic");
+const jumpSound = document.getElementById("jumpSound");
+const hitSound = document.getElementById("hitSound");
+
+let score = 0;
+let highScore = 0;
+let isJumping = false;
+let gameActive = false;
+let obstacles = [];
+let gameSpeed = 6;
+let gravity = 0.6;
+let jumpStrength = 12;
+let playerY = 0;
+let velocityY = 0;
+
+function startGame(e) {
+    e.stopPropagation();
+    resetGame();
+    gameActive = true;
+    startBtn.parentElement.style.display = "none";
+     
+    bgMusic.currentTime = 0;
+    bgMusic.volume = 0.4;
+    bgMusic.play().catch(err => console.log("الصوت مفعل"));
+     
+    requestAnimationFrame(update);
+    spawnObstacle();
+}
+
+function resetGame() {
+    score = 0;
+    gameSpeed = 6;
+    playerY = 0;
+    velocityY = 0;
+    obstacles.forEach(o => o.remove());
+    obstacles = [];
+    updateScore();
+}
+
+function jump() {
+    if (!gameActive || isJumping) return;
+    isJumping = true;
+    velocityY = jumpStrength;
+    jumpSound.currentTime = 0;
+    jumpSound.play();
+   
+    player.classList.add('jump-animation');
+    setTimeout(() => player.classList.remove('jump-animation'), 300);
+}
+
+function update() {
+    if (!gameActive) return;
+
+    velocityY -= gravity;
+    playerY += velocityY;
+
+    if (playerY <= 0) {
+        playerY = 0;
+        isJumping = false;
+        velocityY = 0;
+    }
+    player.style.bottom = playerY + "px";
+
+    obstacles.forEach((ob, index) => {
+        let x = parseFloat(ob.style.right || -30);
+        x += gameSpeed;
+        ob.style.right = x + "px";
+
+        const pRect = player.getBoundingClientRect();
+        const oRect = ob.getBoundingClientRect();
+
+        if (pRect.right > oRect.left + 8 &&
+            pRect.left < oRect.right - 8 &&
+            pRect.bottom > oRect.top + 8) {
+            gameOver();
         }
 
-        function gameLoop(timestamp) {
-            // Manage obstacle spawning timing
-            if (timestamp - lastSpawnTime > 1000) { // Spawn every 1 second
-                spawnObstacle();
-                lastSpawnTime = timestamp;
-            }
-
-            // Clear the canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw obstacles and manage performance
-            obstacles.forEach((obstacle, index) => {
-                ctx.fillStyle = 'red';
-                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-                obstacle.x -= 5; // Move obstacle to the left
-
-                // Remove off-screen obstacles
-                if (obstacle.x + obstacle.width < 0) {
-                    obstacles.splice(index, 1);
-                }
-            });
-
-            // Request the next frame
-            animationFrameId = requestAnimationFrame(gameLoop);
+        if (x > gameContainer.clientWidth) {
+            ob.remove();
+            obstacles.splice(index, 1);
+            score++;
+            if (score % 5 === 0) gameSpeed += 0.5;
+            updateScore();
         }
+    });
 
-        gameLoop();
-    </script>
+    requestAnimationFrame(update);
+}
+
+function spawnObstacle() {
+    if (!gameActive) return;
+     
+    const ob = document.createElement("div");
+    ob.className = "obstacle";
+    ob.style.right = "-30px";
+    ob.style.height = (30 + Math.random() * 20) + "px";
+    gameContainer.appendChild(ob);
+    obstacles.push(ob);
+
+    let nextSpawn = 1000 + Math.random() * 2000 - (gameSpeed * 50);
+    setTimeout(spawnObstacle, Math.max(700, nextSpawn));
+}
+
+function updateScore() {
+    if (score > highScore) highScore = score;
+    scoreBoard.innerHTML = `النقاط: ${score} | الأفضل: ${highScore}`;
+}
+
+function gameOver() {
+    gameActive = false;
+    bgMusic.pause();
+    hitSound.play();
+     
+    startBtn.innerText = "خسرت! حاول مرة أخرى 🔄";
+    startBtn.parentElement.style.display = "flex";
+}
+
+window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.code === "ArrowUp") jump();
+});
+</script>
 </body>
 </html>
