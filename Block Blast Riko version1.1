@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Blast Pro - Final Version</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --grid-panel: #1e293b;
+            --cell-empty: #334155;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .ui-header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .score-container {
+            font-size: 2.2rem;
+            font-weight: 900;
+            color: var(--accent);
+            line-height: 1;
+            text-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+        }
+
+        .best-score {
+            font-size: 0.9rem;
+            opacity: 0.6;
+            margin-top: 5px;
+        }
+
+        #game-wrapper {
+            position: relative;
+            background: var(--grid-panel);
+            padding: 15px;
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            border-radius: 12px;
+            cursor: grab;
+            background: #1e293b;
+        }
+
+        canvas:active { cursor: grabbing; }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 24px;
+            z-index: 100;
+            text-align: center;
+        }
+
+        button {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover { transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <div class="ui-header">
+        <div class="score-container" id="scoreDisplay">0</div>
+        <div class="best-score" id="bestDisplay">أفضل نتيجة: 0</div>
+    </div>
+    
+    <div id="game-wrapper">
+        <canvas id="gameCanvas" width="400" height="620"></canvas>
+        <div id="gameOver" class="overlay">
+            <h2 style="font-size: 2.5rem; margin-bottom: 10px;">انتهت اللعبة!</h2>
+            <p id="finalScore" style="font-size: 1.5rem; margin-bottom: 20px;"></p>
+            <button onclick="resetGame()">إعادة المحاولة</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const bestDisplay = document.getElementById('bestDisplay');
+        const gameOverUI = document.getElementById('gameOver');
+
+        // --- المؤثرات الصوتية ---
+        const sounds = {
+            place: new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'),
+            clear: new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'),
+            lose: new Audio('https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3')
+        };
+
+        const GRID_SIZE = 8;
+        const CELL_SIZE = 46;
+        const GRID_OFFSET_X = 16;
+        const GRID_OFFSET_Y = 16;
+        const SPAWN_Y = 440;
+
+        let score = 0;
+        let highScore = localStorage.getItem('blockBlastBest') || 0;
+        let grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+        let handPieces = [];
+        let dragging = null;
+        let particles = [];
+
+        const SHAPES = [
+            { s: [[1,1],[1,1]], c: '#f87171' }, // Square
+            { s: [[1,1,1,1]], c: '#60a5fa' },   // I-H
+            { s: [[1],[1],[1],[1]], c: '#60a5fa' }, // I-V
+            { s: [[1,1,1],[0,1,0]], c: '#a78bfa' }, // T
+            { s: [[1,0],[1,0],[1,1]], c: '#fbbf24' }, // L
+            { s: [[1,1,1]], c: '#4ade80' },     // Line
+            { s: [[1]], c: '#f472b6' }          // Dot
+        ];
+
+        function init() {
+            score = 0;
+            highScore = localStorage.getItem('blockBlastBest') || 0;
+            updateUI();
+            grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+            gameOverUI.style.display = 'none';
+            particles = [];
+            spawnHand();
+            animate();
+        }
+
+        function spawnHand() {
+            handPieces = [];
+            for (let i = 0; i < 3; i++) {
+                const template = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                handPieces.push({
+                    ...template,
+                    x: 35 + (i * 125),
+                    y: SPAWN_Y,
+                    origX: 35 + (i * 125),
+                    origY: SPAWN_Y,
+                    w: template.s[0].length,
+                    h: template.s.length,
+                    scale: 0.7
+                });
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. رسم الشبكة
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    ctx.fillStyle = grid[r][c] || '#334155';
+                    drawRoundedRect(GRID_OFFSET_X + c * CELL_SIZE, GRID_OFFSET_Y + r * CELL_SIZE, CELL_SIZE - 4, CELL_SIZE - 4, 8);
+                }
+            }
+
+            // 2. رسم القطع مع ظل للقطعة المسحوبة
+            handPieces.forEach(p => {
+                ctx.fillStyle = p.c;
+                const size = CELL_SIZE * p.scale;
+                if (p === dragging) {
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = p.c;
+                }
+                p.s.forEach((row, ri) => {
+                    row.forEach((cell, ci) => {
+                        if (cell) drawRoundedRect(p.x + ci * size, p.y + ri * size, size - 3, size - 3, 6);
+                    });
+                });
+                ctx.shadowBlur = 0;
+            });
+
+            // 3. تحديث الجسيمات
+            particles.forEach((p, i) => {
+                p.x += p.vx; p.y += p.vy; p.alpha -= 0.04;
+                if (p.alpha <= 0) particles.splice(i, 1);
+                else {
+                    ctx.globalAlpha = p.alpha;
+                    ctx.fillStyle = p.c;
+                    ctx.fillRect(p.x, p.y, 5, 5);
+                }
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function drawRoundedRect(x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, r);
+            ctx.fill();
+        }
+
+        // --- التحكم ---
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); start(e.touches[0]); });
+
+        function start(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            handPieces.forEach(p => {
+                const size = CELL_SIZE * p.scale;
+                if (mx > p.x && mx < p.x + p.w * size && my > p.y && my < p.y + p.h * size) {
+                    dragging = p;
+                    p.scale = 1.0;
+                }
+            });
+        }
+
+        window.addEventListener('mousemove', move);
+        window.addEventListener('touchmove', e => { if(dragging) move(e.touches[0]); });
+
+        function move(e) {
+            if (!dragging) return;
+            const rect = canvas.getBoundingClientRect();
+            dragging.x = e.clientX - rect.left - (dragging.w * CELL_SIZE) / 2;
+            // رفع القطعة قليلاً فوق الإصبع لتسهيل الرؤية
+            dragging.y = e.clientY - rect.top - (dragging.h * CELL_SIZE) * 1.2;
+        }
+
+        window.addEventListener('mouseup', end);
+        window.addEventListener('touchend', end);
+
+        function end() {
+            if (!dragging) return;
+            let gx = Math.round((dragging.x - GRID_OFFSET_X) / CELL_SIZE);
+            let gy = Math.round((dragging.y - GRID_OFFSET_Y) / CELL_SIZE);
+
+            if (canPlace(dragging, gx, gy)) {
+                place(dragging, gx, gy);
+                sounds.place.play().catch(()=>{}); 
+                handPieces = handPieces.filter(p => p !== dragging);
+                checkLines();
+                if (handPieces.length === 0) spawnHand();
+            } else {
+                dragging.x = dragging.origX;
+                dragging.y = dragging.origY;
+                dragging.scale = 0.7;
+            }
+            dragging = null;
+            checkGameOver();
+        }
+
+        function canPlace(p, gx, gy) {
+            if (gx < 0 || gy < 0 || gx + p.w > GRID_SIZE || gy + p.h > GRID_SIZE) return false;
+            for (let r = 0; r < p.h; r++) {
+                for (let c = 0; c < p.w; c++) {
+                    if (p.s[r][c] && grid[gy + r][gx + c]) return false;
+                }
+            }
+            return true;
+        }
+
+        function place(p, gx, gy) {
+            for (let r = 0; r < p.h; r++) {
+                for (let c = 0; c < p.w; c++) {
+                    if (p.s[r][c]) grid[gy + r][gx + c] = p.c;
+                }
+            }
+            score += 20;
+            updateUI();
+        }
+
+        function checkLines() {
+            let rows = [], cols = [];
+            for (let i = 0; i < GRID_SIZE; i++) {
+                if (grid[i].every(c => c !== 0)) rows.push(i);
+                if (grid.every(row => row[i] !== 0)) cols.push(i);
+            }
+
+            if (rows.length || cols.length) {
+                sounds.clear.play().catch(()=>{});
+                rows.forEach(r => {
+                    for (let c = 0; c < GRID_SIZE; c++) {
+                        createEffect(GRID_OFFSET_X + c * CELL_SIZE, GRID_OFFSET_Y + r * CELL_SIZE, grid[r][c]);
+                        grid[r][c] = 0;
+                    }
+                });
+                cols.forEach(c => {
+                    for (let r = 0; r < GRID_SIZE; r++) {
+                        if (grid[r][c]) {
+                            createEffect(GRID_OFFSET_X + c * CELL_SIZE, GRID_OFFSET_Y + r * CELL_SIZE, grid[r][c]);
+                            grid[r][c] = 0;
+                        }
+                    }
+                });
+                score += (rows.length + cols.length) * 100;
+                updateUI();
+            }
+        }
+
+        function createEffect(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x: x + 23, y: y + 23,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    alpha: 1, c: color
+                });
+            }
+        }
+
+        function checkGameOver() {
+            const canMove = handPieces.some(p => {
+                for (let r = 0; r <= GRID_SIZE - p.h; r++) {
+                    for (let c = 0; c <= GRID_SIZE - p.w; c++) {
+                        if (canPlace(p, c, r)) return true;
+                    }
+                }
+                return false;
+            });
+
+            if (!canMove && handPieces.length > 0) {
+                sounds.lose.play().catch(()=>{});
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem('blockBlastBest', highScore);
+                }
+                gameOverUI.style.display = 'flex';
+                document.getElementById('finalScore').innerText = `سكورك: ${score}`;
+            }
+        }
+
+        function updateUI() {
+            scoreDisplay.innerText = score;
+            bestDisplay.innerText = `أفضل نتيجة: ${highScore}`;
+        }
+
+        function resetGame() { init(); }
+        function animate() { draw(); requestAnimationFrame(animate); }
+
+        init();
+    </script>
+</body>
+</html>
