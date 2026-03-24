@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Blast Pro: Studio Edition</title>
+    <style>
+        :root {
+            --bg: #020617;
+            --panel: #1e293b;
+            --accent: #38bdf8;
+            --secondary: #818cf8;
+            --text: #f8fafc;
+            --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* --- شاشات الواجهة (UI) --- */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: 0.5s ease;
+        }
+
+        .hidden { opacity: 0; pointer-events: none; transform: scale(1.1); }
+
+        /* --- شاشة البداية الاحترافية --- */
+        .brand-title {
+            font-size: 5rem;
+            font-weight: 900;
+            text-align: center;
+            line-height: 0.8;
+            margin-bottom: 20px;
+            background: linear-gradient(to bottom, var(--accent), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.3));
+        }
+
+        /* --- لوحة الإعدادات (Settings) --- */
+        .settings-modal {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid var(--accent);
+            padding: 30px;
+            border-radius: 30px;
+            width: 80%;
+            max-width: 350px;
+            backdrop-filter: blur(15px);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        /* --- الأزرار --- */
+        .btn {
+            background: linear-gradient(135deg, var(--accent), var(--secondary));
+            color: var(--bg);
+            border: none;
+            padding: 15px 50px;
+            font-size: 1.4rem;
+            font-weight: bold;
+            border-radius: 20px;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(56, 189, 248, 0.3);
+            transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .btn:active { transform: scale(0.9); }
+
+        .icon-btn {
+            background: var(--glass);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            width: 50px; height: 50px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        /* --- بيئة اللعب --- */
+        #game-container {
+            position: relative;
+            background: var(--panel);
+            padding: 15px;
+            border-radius: 35px;
+            border: 2px solid rgba(255,255,255,0.05);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            width: 400px;
+            padding: 0 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        #score-display { font-size: 3rem; font-weight: 900; color: var(--accent); }
+        .best-label { font-size: 0.9rem; opacity: 0.5; text-align: left; }
+
+        /* تجميل المفاتيح (Toggle) */
+        .switch {
+            position: relative; display: inline-block; width: 50px; height: 26px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #334155; transition: .4s; border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 3px;
+            background-color: white; transition: .4s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: var(--accent); }
+        input:checked + .slider:before { transform: translateX(24px); }
+
+    </style>
+</head>
+<body>
+
+    <div id="screen-start" class="overlay">
+        <div class="brand-title">BLOCK<br>BLAST</div>
+        <p style="margin-bottom: 40px; opacity: 0.6; letter-spacing: 3px;">STUDIO EDITION V3.0</p>
+        <button class="btn" onclick="Game.start()">ابدأ اللعب</button>
+        <button class="icon-btn" style="margin-top: 20px;" onclick="UI.toggleSettings(true)">⚙️</button>
+    </div>
+
+    <div id="screen-settings" class="overlay hidden">
+        <div class="settings-modal">
+            <h2 style="margin-top:0; color: var(--accent);">الإعدادات</h2>
+            <div class="setting-row">
+                <span>الموسيقى</span>
+                <label class="switch">
+                    <input type="checkbox" id="check-music" checked onchange="Audio.updateSettings()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <span>المؤثرات</span>
+                <label class="switch">
+                    <input type="checkbox" id="check-sfx" checked onchange="Audio.updateSettings()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <span>هزة الشاشة</span>
+                <label class="switch">
+                    <input type="checkbox" id="check-shake" checked onchange="Game.updateShake()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <button class="btn" style="width:100%; margin-top:10px;" onclick="UI.toggleSettings(false)">إغلاق</button>
+        </div>
+    </div>
+
+    <div id="screen-over" class="overlay hidden">
+        <h2 style="font-size: 3rem; color: #f87171;">انتهى الوقت!</h2>
+        <div id="final-stats" style="margin-bottom: 30px; font-size: 1.5rem; text-align: center;"></div>
+        <button class="btn" onclick="Game.restart()">حاول مجدداً</button>
+    </div>
+
+    <div class="hud">
+        <div class="best-label">BEST<br><span id="best-val" style="color:white; font-weight:bold; font-size:1.2rem;">0</span></div>
+        <div id="score-display">0</div>
+        <button class="icon-btn" onclick="UI.toggleSettings(true)">⚙️</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="400" height="620"></canvas>
+    </div>
+
+    <script>
+        /** * BLOCK BLAST PRO - الإصدار 3.0
+         * نظام إدارة كامل (Audio, UI, Game Engine)
+         */
+
+        // 1. إدارة الصوت
+        const Audio = {
+            bg: new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-17.mp3'),
+            sfx: {
+                place: new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'),
+                clear: new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'),
+                lose: new Audio('https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3')
+            },
+            init() {
+                this.bg.loop = true;
+                this.bg.volume = 0.15;
+            },
+            updateSettings() {
+                const musicOn = document.getElementById('check-music').checked;
+                const sfxOn = document.getElementById('check-sfx').checked;
+                this.bg.muted = !musicOn;
+                Object.values(this.sfx).forEach(s => s.muted = !sfxOn);
+            },
+            play(key) { this.sfx[key]?.play().catch(()=>{}); }
+        };
+
+        // 2. إدارة الواجهة
+        const UI = {
+            toggleSettings(show) {
+                const el = document.getElementById('screen-settings');
+                show ? el.classList.remove('hidden') : el.classList.add('hidden');
+            },
+            updateScore(s, b) {
+                document.getElementById('score-display').innerText = s;
+                document.getElementById('best-val').innerText = b;
+            }
+        };
+
+        // 3. كائنات اللعب (Objects)
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.vx = (Math.random() - 0.5) * 12;
+                this.vy = (Math.random() - 0.5) * 12;
+                this.alpha = 1;
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Piece {
+            constructor(data, idx) {
+                this.matrix = data.s; this.color = data.c;
+                this.w = this.matrix[0].length; this.h = this.matrix.length;
+                this.idx = idx; this.reset();
+            }
+            reset() {
+                this.scale = 0.7;
+                this.x = 45 + (this.idx * 125); this.y = 460;
+                this.isDragging = false;
+            }
+        }
+
+        // 4. المحرك الرئيسي
+        const Game = {
+            canvas: null, ctx: null, grid: [], pieces: [], particles: [],
+            score: 0, high: localStorage.getItem('bb_v3_high') || 0,
+            canShake: true, dragPiece: null,
+
+            shapes: [
+                { s: [[1,1],[1,1]], c: '#ff595e' },
+                { s: [[1,1,1,1]], c: '#1982c4' },
+                { s: [[1,1,1],[0,1,0]], c: '#8ac926' },
+                { s: [[1,1,1]], c: '#ffca3a' },
+                { s: [[1,1,0],[0,1,1]], c: '#6a4c93' },
+                { s: [[1,0],[1,1],[0,1]], c: '#4361ee' }
+            ],
+
+            init() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                Audio.init();
+                this.setupControls();
+                UI.updateScore(0, this.high);
+            },
+
+            start() {
+                document.getElementById('screen-start').classList.add('hidden');
+                Audio.bg.play().catch(()=>{});
+                this.reset();
+            },
+
+            reset() {
+                this.score = 0;
+                this.grid = Array.from({length: 8}, () => Array(8).fill(0));
+                this.particles = [];
+                this.spawn();
+                this.loop();
+            },
+
+            spawn() {
+                this.pieces = [];
+                for(let i=0; i<3; i++) {
+                    const r = this.shapes[Math.floor(Math.random()*this.shapes.length)];
+                    this.pieces.push(new Piece(r, i));
+                }
+            },
+
+            updateShake() { this.canShake = document.getElementById('check-shake').checked; },
+
+            setupControls() {
+                const getP = (e) => {
+                    const r = this.canvas.getBoundingClientRect();
+                    const t = e.touches ? e.touches[0] : e;
+                    return { x: t.clientX - r.left, y: t.clientY - r.top };
+                };
+                this.canvas.onmousedown = this.canvas.ontouchstart = (e) => {
+                    if(e.type === 'touchstart') e.preventDefault();
+                    const p = getP(e);
+                    this.pieces.forEach(pc => {
+                        const sz = 46 * pc.scale;
+                        if(p.x > pc.x && p.x < pc.x + pc.w*sz && p.y > pc.y && p.y < pc.y + pc.h*sz) {
+                            this.dragPiece = pc; pc.isDragging = true; pc.scale = 1.0;
+                        }
+                    });
+                };
+                window.onmousemove = window.ontouchmove = (e) => {
+                    if(!this.dragPiece) return;
+                    const p = getP(e);
+                    this.dragPiece.x = p.x - (this.dragPiece.w * 46)/2;
+                    this.dragPiece.y = p.y - (this.dragPiece.h * 46) * 1.3;
+                };
+                window.onmouseup = window.ontouchend = () => {
+                    if(!this.dragPiece) return;
+                    const pc = this.dragPiece;
+                    let gx = Math.round((pc.x - 16)/46);
+                    let gy = Math.round((pc.y - 16)/46);
+                    if(this.canPlace(pc, gx, gy)) {
+                        this.place(pc, gx, gy);
+                        this.pieces = this.pieces.filter(i => i !== pc);
+                        this.checkLines();
+                        if(this.pieces.length === 0) this.spawn();
+                    } else { pc.reset(); }
+                    this.dragPiece = null; this.checkGameOver();
+                };
+            },
+
+            canPlace(pc, gx, gy) {
+                if(gx < 0 || gy < 0 || gx + pc.w > 8 || gy + pc.h > 8) return false;
+                for(let r=0; r<pc.h; r++) for(let c=0; c<pc.w; c++)
+                    if(pc.matrix[r][c] && this.grid[gy+r][gx+c]) return false;
+                return true;
+            },
+
+            place(pc, gx, gy) {
+                for(let r=0; r<pc.h; r++) for(let c=0; c<pc.w; c++)
+                    if(pc.matrix[r][c]) this.grid[gy+r][gx+c] = pc.color;
+                this.score += 20; Audio.play('place'); UI.updateScore(this.score, this.high);
+            },
+
+            checkLines() {
+                let rows = [], cols = [];
+                for(let i=0; i<8; i++) {
+                    if(this.grid[i].every(v => v !== 0)) rows.push(i);
+                    let cf = true; for(let r=0; r<8; r++) if(this.grid[r][i] === 0) cf = false;
+                    if(cf) cols.push(i);
+                }
+                if(rows.length || cols.length) {
+                    if(this.canShake) this.shake();
+                    Audio.play('clear');
+                    rows.forEach(r => { for(let c=0; c<8; c++) { this.boom(c,r); this.grid[r][c]=0; } });
+                    cols.forEach(c => { for(let r=0; r<8; r++) { if(this.grid[r][c]) { this.boom(c,r); this.grid[r][c]=0; } } });
+                    this.score += (rows.length + cols.length) * 100; UI.updateScore(this.score, this.high);
+                }
+            },
+
+            boom(c, r) {
+                const color = this.grid[r][c];
+                for(let i=0; i<10; i++) this.particles.push(new Particle(16 + c*46 + 23, 16 + r*46 + 23, color));
+            },
+
+            shake() {
+                const el = document.getElementById('game-container');
+                el.style.transform = 'translate(7px, 7px)';
+                setTimeout(() => el.style.transform = 'translate(-7px, -7px)', 50);
+                setTimeout(() => el.style.transform = 'translate(0, 0)', 100);
+            },
+
+            checkGameOver() {
+                if(this.pieces.length === 0) return;
+                const stuck = this.pieces.every(pc => {
+                    for(let r=0; r <= 8 - pc.h; r++) for(let c=0; c <= 8 - pc.w; c++)
+                        if(this.canPlace(pc, c, r)) return false;
+                    return true;
+                });
+                if(stuck) {
+                    Audio.play('lose');
+                    if(this.score > this.high) { this.high = this.score; localStorage.setItem('bb_v3_high', this.high); }
+                    document.getElementById('screen-over').classList.remove('hidden');
+                    document.getElementById('final-stats').innerHTML = `نتيجة الجولة: ${this.score}<br>أفضل نتيجة: ${this.high}`;
+                }
+            },
+
+            draw() {
+                this.ctx.clearRect(0, 0, 400, 620);
+                // الشبكة
+                for(let r=0; r<8; r++) {
+                    for(let c=0; c<8; c++) {
+                        this.ctx.fillStyle = this.grid[r][c] || 'rgba(255,255,255,0.03)';
+                        this.ctx.beginPath(); this.ctx.roundRect(16 + c*46, 16 + r*46, 42, 42, 10); this.ctx.fill();
+                    }
+                }
+                // الجسيمات
+                this.particles.forEach((p, i) => {
+                    p.x += p.vx; p.y += p.vy; p.alpha -= 0.03;
+                    p.draw(this.ctx);
+                    if(p.alpha <= 0) this.particles.splice(i, 1);
+                });
+                // القطع
+                this.pieces.forEach(pc => {
+                    this.ctx.save();
+                    this.ctx.fillStyle = pc.color;
+                    const sz = 46 * pc.scale;
+                    if(pc.isDragging) { this.ctx.shadowBlur = 30; this.ctx.shadowColor = pc.color; }
+                    pc.matrix.forEach((row, ri) => row.forEach((v, ci) => {
+                        if(v) { this.ctx.beginPath(); this.ctx.roundRect(pc.x + ci*sz, pc.y + ri*sz, sz-3, sz-3, 8); this.ctx.fill(); }
+                    }));
+                    this.ctx.restore();
+                });
+            },
+
+            loop() {
+                this.draw();
+                if(document.getElementById('screen-over').classList.contains('hidden'))
+                    requestAnimationFrame(() => this.loop());
+            },
+
+            restart() { document.getElementById('screen-over').classList.add('hidden'); this.reset(); }
+        };
+
+        window.onload = () => Game.init();
+    </script>
+</body>
+</html>
