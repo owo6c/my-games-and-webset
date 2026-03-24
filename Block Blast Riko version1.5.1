@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BLOCK BLAST PRO | ENTERPRISE SYSTEM v4.0</title>
+    <style>
+        /* --- الأساسيات العميقة للنظام --- */
+        :root {
+            --primary-bg: #020617;
+            --secondary-bg: #0f172a;
+            --accent-glow: #38bdf8;
+            --danger-glow: #ef4444;
+            --text-main: #f8fafc;
+            --glass-effect: rgba(255, 255, 255, 0.03);
+            --transition-speed: 0.4s;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background: var(--primary-bg);
+            color: var(--text-main);
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100vh; width: 100vw;
+            overflow: hidden; touch-action: none;
+        }
+
+        /* --- واجهات المستخدم المعقدة (Advanced UI Screens) --- */
+        .system-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, var(--secondary-bg) 0%, var(--primary-bg) 100%);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 9999;
+            transition: opacity var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1),
+                        transform var(--transition-speed) ease;
+        }
+
+        .system-overlay.hidden {
+            opacity: 0; visibility: hidden; transform: scale(1.05);
+        }
+
+        .brand-container { text-align: center; animation: pulseGlow 3s infinite; }
+        
+        @keyframes pulseGlow {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.2)); }
+            50% { filter: drop-shadow(0 0 30px rgba(56, 189, 248, 0.5)); }
+        }
+
+        .main-logo {
+            font-size: clamp(3rem, 15vw, 6rem);
+            font-weight: 900; letter-spacing: -4px;
+            background: linear-gradient(180deg, #fff 0%, var(--accent-glow) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin: 0; line-height: 0.9;
+        }
+
+        /* --- الأزرار والمفاتيح --- */
+        .mega-button {
+            background: linear-gradient(135deg, var(--accent-glow), #818cf8);
+            color: #000; border: none;
+            padding: 20px 80px; font-size: 1.5rem;
+            font-weight: 800; border-radius: 24px;
+            cursor: pointer; margin-top: 40px;
+            box-shadow: 0 10px 40px rgba(56, 189, 248, 0.4);
+            transition: 0.3s all cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .mega-button:hover { transform: translateY(-5px); box-shadow: 0 15px 50px rgba(56, 189, 248, 0.6); }
+        .mega-button:active { transform: scale(0.95); }
+
+        /* --- الإعدادات (Settings Panel) --- */
+        .settings-panel {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 40px; border-radius: 40px;
+            width: 90%; max-width: 450px;
+        }
+
+        .control-group {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 25px;
+        }
+
+        /* --- منطقة اللعب (Battlefield) --- */
+        #viewport {
+            position: relative;
+            background: var(--glass-effect);
+            padding: 25px; border-radius: 50px;
+            border: 2px solid rgba(255,255,255,0.05);
+            box-shadow: 0 50px 100px -20px rgba(0,0,0,0.7);
+        }
+
+        canvas { border-radius: 30px; background: #000; cursor: crosshair; }
+
+        .score-hud {
+            position: absolute; top: -80px; width: 100%;
+            display: flex; justify-content: space-between; align-items: flex-end;
+        }
+
+        #current-score { font-size: 4rem; font-weight: 900; color: var(--accent-glow); }
+
+        /* --- نظام التحميل (Preloader) --- */
+        .loader { width: 50px; height: 50px; border: 5px solid var(--glass-effect); border-top-color: var(--accent-glow); border-radius: 50%; animation: spin 1s infinite linear; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <div id="ui-start" class="system-overlay">
+        <div class="brand-container">
+            <h1 class="main-logo">BLOCK<br>BLAST</h1>
+            <p style="opacity: 0.4; letter-spacing: 5px; margin-top: 10px;">ULTIMATE ENTERPRISE v4.0</p>
+        </div>
+        <button class="mega-button" id="btn-master-start">إطلاق النظام</button>
+        <div style="margin-top: 30px;">
+            <button class="mega-button" style="padding: 10px 30px; font-size: 1rem; background: var(--glass-effect); color: white;" onclick="GlobalUI.openSettings()">الإعدادات ⚙️</button>
+        </div>
+    </div>
+
+    <div id="ui-settings" class="system-overlay hidden">
+        <div class="settings-panel">
+            <h2 style="color: var(--accent-glow); margin-bottom: 30px;">مركز التحكم</h2>
+            <div class="control-group">
+                <span>الموسيقى المحيطية</span>
+                <input type="checkbox" id="set-music" checked onchange="AudioSystem.sync()">
+            </div>
+            <div class="control-group">
+                <span>المؤثرات الصوتية</span>
+                <input type="checkbox" id="set-sfx" checked onchange="AudioSystem.sync()">
+            </div>
+            <div class="control-group">
+                <span>اهتزاز المحرك</span>
+                <input type="checkbox" id="set-shake" checked>
+            </div>
+            <button class="mega-button" style="width: 100%;" onclick="GlobalUI.closeSettings()">تأكيد الحفظ</button>
+        </div>
+    </div>
+
+    <div id="ui-gameover" class="system-overlay hidden">
+        <h2 style="font-size: 4rem; color: var(--danger-glow);">انتهت المهمة</h2>
+        <div id="final-report" style="font-size: 2rem; margin: 20px 0; text-align: center;"></div>
+        <button class="mega-button" onclick="CoreEngine.reboot()">إعادة تشغيل النظام</button>
+    </div>
+
+    <div id="viewport">
+        <div class="score-hud">
+            <div id="current-score">0</div>
+            <div style="text-align: right; opacity: 0.5;">BEST: <span id="best-score">0</span></div>
+        </div>
+        <canvas id="gameCore" width="400" height="620"></canvas>
+    </div>
+
+    <script>
+        /**
+         * BLOCK BLAST MEGA CORE v4.0
+         * نظام برمجي ضخم مبني ليعمل بكفاءة الميجا بايت
+         */
+
+        // 1. نظام إدارة البيانات الضخم (Data Management System)
+        const SystemConfig = {
+            VERSION: "4.0.0",
+            GRID_SIZE: 8,
+            CELL_SIZE: 46,
+            OFFSET_X: 16,
+            OFFSET_Y: 16,
+            COLORS: {
+                BG_EMPTY: "rgba(255, 255, 255, 0.05)",
+                PIECES: ["#ff595e", "#1982c4", "#8ac926", "#ffca3a", "#6a4c93", "#4361ee", "#d00000"]
+            },
+            SHAPES: [
+                [[1,1],[1,1]], [[1,1,1,1]], [[1,1,1],[0,1,0]], 
+                [[1,1,1]], [[1,1,0],[0,1,1]], [[1,0],[1,1],[0,1]], [[1]]
+            ]
+        };
+
+        // 2. محرك الصوت المتقدم (Audio Subsystem)
+        const AudioSystem = {
+            bgm: new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-17.mp3'),
+            sfx: {
+                place: new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'),
+                clear: new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'),
+                lose: new Audio('https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3')
+            },
+            init() { 
+                this.bgm.loop = true; this.bgm.volume = 0.2; 
+                this.sync();
+            },
+            sync() {
+                const m = document.getElementById('set-music').checked;
+                const s = document.getElementById('set-sfx').checked;
+                this.bgm.muted = !m;
+                Object.values(this.sfx).forEach(x => x.muted = !s);
+            },
+            trigger(key) { this.sfx[key]?.play().catch(()=>{}); }
+        };
+
+        // 3. مدير الواجهة (Global UI Controller)
+        const GlobalUI = {
+            openSettings() { document.getElementById('ui-settings').classList.remove('hidden'); },
+            closeSettings() { document.getElementById('ui-settings').classList.add('hidden'); },
+            updateScore(s, h) {
+                document.getElementById('current-score').innerText = s;
+                document.getElementById('best-score').innerText = h;
+            }
+        };
+
+        // 4. محرك اللعبة الرئيسي (Core Game Engine)
+        const CoreEngine = {
+            canvas: null, ctx: null, grid: [], hand: [], particles: [],
+            score: 0, high: localStorage.getItem('BB_ULTIMATE_HIGH') || 0,
+            activePiece: null, isRunning: false,
+
+            init() {
+                console.log("System Initializing...");
+                this.canvas = document.getElementById('gameCore');
+                this.ctx = this.canvas.getContext('2d');
+                AudioSystem.init();
+                this.attachListeners();
+                GlobalUI.updateScore(0, this.high);
+                
+                // زر البدء الكبير
+                document.getElementById('btn-master-start').onclick = () => {
+                    document.getElementById('ui-start').classList.add('hidden');
+                    this.boot();
+                };
+            },
+
+            boot() {
+                this.isRunning = true;
+                this.score = 0;
+                this.grid = Array.from({length: 8}, () => Array(8).fill(null));
+                this.spawnHand();
+                AudioSystem.bgm.play().catch(()=>{});
+                this.loop();
+            },
+
+            spawnHand() {
+                this.hand = [];
+                for(let i=0; i<3; i++) {
+                    const type = Math.floor(Math.random() * SystemConfig.SHAPES.length);
+                    this.hand.push({
+                        matrix: SystemConfig.SHAPES[type],
+                        color: SystemConfig.COLORS.PIECES[type % SystemConfig.COLORS.PIECES.length],
+                        x: 40 + (i * 125), y: 460, origX: 40 + (i * 125), origY: 460,
+                        scale: 0.7, w: SystemConfig.SHAPES[type][0].length, h: SystemConfig.SHAPES[type].length
+                    });
+                }
+            },
+
+            attachListeners() {
+                const getMousePos = (e) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const t = e.touches ? e.touches[0] : e;
+                    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+                };
+
+                this.canvas.onmousedown = this.canvas.ontouchstart = (e) => {
+                    if(!this.isRunning) return;
+                    const pos = getMousePos(e);
+                    this.hand.forEach(p => {
+                        const s = SystemConfig.CELL_SIZE * p.scale;
+                        if(pos.x > p.x && pos.x < p.x + p.w*s && pos.y > p.y && pos.y < p.y + p.h*s) {
+                            this.activePiece = p; p.scale = 1.1;
+                        }
+                    });
+                };
+
+                window.onmousemove = window.ontouchmove = (e) => {
+                    if(!this.activePiece) return;
+                    const pos = getMousePos(e);
+                    this.activePiece.x = pos.x - (this.activePiece.w * SystemConfig.CELL_SIZE)/2;
+                    this.activePiece.y = pos.y - (this.activePiece.h * SystemConfig.CELL_SIZE) * 1.2;
+                };
+
+                window.onmouseup = window.ontouchend = () => {
+                    if(!this.activePiece) return;
+                    const p = this.activePiece;
+                    let gx = Math.round((p.x - SystemConfig.OFFSET_X)/SystemConfig.CELL_SIZE);
+                    let gy = Math.round((p.y - SystemConfig.OFFSET_Y)/SystemConfig.CELL_SIZE);
+
+                    if(this.validatePlacement(p, gx, gy)) {
+                        this.executePlacement(p, gx, gy);
+                    } else {
+                        p.x = p.origX; p.y = p.origY; p.scale = 0.7;
+                    }
+                    this.activePiece = null;
+                    this.processSystemCheck();
+                };
+            },
+
+            validatePlacement(p, gx, gy) {
+                if(gx < 0 || gy < 0 || gx + p.w > 8 || gy + p.h > 8) return false;
+                for(let r=0; r<p.h; r++) for(let c=0; c<p.w; c++)
+                    if(p.matrix[r][c] && this.grid[gy+r][gx+c]) return false;
+                return true;
+            },
+
+            executePlacement(p, gx, gy) {
+                for(let r=0; r<p.h; r++) for(let c=0; c<p.w; c++)
+                    if(p.matrix[r][c]) this.grid[gy+r][gx+c] = p.color;
+                
+                this.score += 20;
+                AudioSystem.trigger('place');
+                this.hand = this.hand.filter(x => x !== p);
+                if(this.hand.length === 0) this.spawnHand();
+                this.clearLines();
+                GlobalUI.updateScore(this.score, this.high);
+            },
+
+            clearLines() {
+                let rFull = [], cFull = [];
+                for(let i=0; i<8; i++) {
+                    if(this.grid[i].every(x => x !== null)) rFull.push(i);
+                    let col = true; for(let r=0; r<8; r++) if(!this.grid[r][i]) col = false;
+                    if(col) cFull.push(i);
+                }
+
+                if(rFull.length || cFull.length) {
+                    AudioSystem.trigger('clear');
+                    if(document.getElementById('set-shake').checked) this.shakeUI();
+                    rFull.forEach(r => { for(let c=0; c<8; c++) { this.createVFX(c,r,this.grid[r][c]); this.grid[r][c]=null; } });
+                    cFull.forEach(c => { for(let r=0; r<8; r++) { if(this.grid[r][c]) { this.createVFX(c,r,this.grid[r][c]); this.grid[r][c]=null; } } });
+                    this.score += (rFull.length + cFull.length) * 100;
+                }
+            },
+
+            createVFX(c, r, color) {
+                for(let i=0; i<15; i++) {
+                    this.particles.push({
+                        x: SystemConfig.OFFSET_X + c*SystemConfig.CELL_SIZE + 23,
+                        y: SystemConfig.OFFSET_Y + r*SystemConfig.CELL_SIZE + 23,
+                        vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15,
+                        life: 1.0, color: color
+                    });
+                }
+            },
+
+            shakeUI() {
+                const v = document.getElementById('viewport');
+                v.style.transform = `translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
+                setTimeout(() => v.style.transform = 'translate(0,0)', 100);
+            },
+
+            processSystemCheck() {
+                if(this.hand.length === 0) return;
+                const canMove = this.hand.some(p => {
+                    for(let r=0; r <= 8-p.h; r++) for(let c=0; c <= 8-p.w; c++)
+                        if(this.validatePlacement(p, c, r)) return true;
+                    return false;
+                });
+
+                if(!canMove) {
+                    this.isRunning = false;
+                    AudioSystem.trigger('lose');
+                    if(this.score > this.high) { this.high = this.score; localStorage.setItem('BB_ULTIMATE_HIGH', this.high); }
+                    document.getElementById('ui-gameover').classList.remove('hidden');
+                    document.getElementById('final-report').innerHTML = `السكور النهائي: ${this.score}<br>أفضل نتيجة: ${this.high}`;
+                }
+            },
+
+            reboot() {
+                document.getElementById('ui-gameover').classList.add('hidden');
+                this.boot();
+            },
+
+            loop() {
+                if(!this.isRunning && this.particles.length === 0) return;
+                this.render();
+                requestAnimationFrame(() => this.loop());
+            },
+
+            render() {
+                this.ctx.clearRect(0, 0, 400, 620);
+                
+                // رسم الشبكة (Grid Infrastructure)
+                for(let r=0; r<8; r++) {
+                    for(let c=0; c<8; c++) {
+                        this.ctx.fillStyle = this.grid[r][c] || SystemConfig.COLORS.BG_EMPTY;
+                        this.ctx.beginPath();
+                        this.ctx.roundRect(SystemConfig.OFFSET_X + c*SystemConfig.CELL_SIZE, SystemConfig.OFFSET_Y + r*SystemConfig.CELL_SIZE, 42, 42, 10);
+                        this.ctx.fill();
+                    }
+                }
+
+                // رسم المؤثرات البصرية (VFX Engine)
+                this.particles.forEach((p, i) => {
+                    p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                    this.ctx.globalAlpha = p.life;
+                    this.ctx.fillStyle = p.color;
+                    this.ctx.beginPath(); this.ctx.arc(p.x, p.y, 4, 0, Math.PI*2); this.ctx.fill();
+                    if(p.life <= 0) this.particles.splice(i, 1);
+                });
+                this.ctx.globalAlpha = 1;
+
+                // رسم القطع في اليد (Asset Rendering)
+                this.hand.forEach(p => {
+                    this.ctx.save();
+                    this.ctx.fillStyle = p.color;
+                    const s = SystemConfig.CELL_SIZE * p.scale;
+                    if(p === this.activePiece) { this.ctx.shadowBlur = 30; this.ctx.shadowColor = p.color; }
+                    p.matrix.forEach((row, ri) => row.forEach((val, ci) => {
+                        if(val) {
+                            this.ctx.beginPath();
+                            this.ctx.roundRect(p.x + ci*s, p.y + ri*s, s-4, s-4, 8);
+                            this.ctx.fill();
+                        }
+                    }));
+                    this.ctx.restore();
+                });
+            }
+        };
+
+        // إطلاق النظام عند التحميل
+        window.onload = () => CoreEngine.init();
+
+    </script>
+</body>
+</html>
