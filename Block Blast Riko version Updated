@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Blast Pro - Full Game</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --grid-panel: #1e293b;
+            --cell-empty: #334155;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .ui-header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .score-container {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--accent);
+            text-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+        }
+
+        #game-wrapper {
+            position: relative;
+            background: var(--grid-panel);
+            padding: 15px;
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            border-radius: 12px;
+            cursor: grab;
+        }
+
+        canvas:active { cursor: grabbing; }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 24px;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .overlay h2 { font-size: 2rem; margin-bottom: 10px; }
+
+        button {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover { transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <div class="ui-header">
+        <div class="score-container" id="score">0</div>
+    </div>
+    
+    <div id="game-wrapper">
+        <canvas id="gameCanvas" width="400" height="620"></canvas>
+        <div id="gameOver" class="overlay">
+            <h2>انتهت اللعبة!</h2>
+            <p id="finalScore" style="font-size: 1.5rem; margin-bottom: 20px;"></p>
+            <button onclick="resetGame()">إعادة المحاولة</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const gameOverUI = document.getElementById('gameOver');
+
+        // الإعدادات الثابتة
+        const GRID_SIZE = 8;
+        const CELL_SIZE = 46;
+        const GRID_OFFSET_X = 16;
+        const GRID_OFFSET_Y = 16;
+        const SPAWN_Y = 430;
+
+        let score = 0;
+        let grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+        let handPieces = [];
+        let dragging = null;
+        let particles = [];
+
+        // تعريف الأشكال (Templates)
+        const SHAPES = [
+            { s: [[1,1],[1,1]], c: '#f87171' }, // Square
+            { s: [[1,1,1,1]], c: '#60a5fa' },   // I-Horizontal
+            { s: [[1],[1],[1],[1]], c: '#60a5fa' }, // I-Vertical
+            { s: [[1,1,1],[0,1,0]], c: '#a78bfa' }, // T
+            { s: [[1,0],[1,0],[1,1]], c: '#fbbf24' }, // L
+            { s: [[1,1,1]], c: '#4ade80' },     // Small line
+            { s: [[1]], c: '#f472b6' }          // Dot
+        ];
+
+        function init() {
+            score = 0;
+            scoreDisplay.innerText = score;
+            grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+            gameOverUI.style.display = 'none';
+            particles = [];
+            spawnHand();
+            animate();
+        }
+
+        function spawnHand() {
+            handPieces = [];
+            for (let i = 0; i < 3; i++) {
+                const template = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                handPieces.push({
+                    ...template,
+                    x: 35 + (i * 125),
+                    y: SPAWN_Y,
+                    origX: 35 + (i * 125),
+                    origY: SPAWN_Y,
+                    w: template.s[0].length,
+                    h: template.s.length,
+                    scale: 0.7
+                });
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. رسم الشبكة
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    ctx.fillStyle = grid[r][c] || '#334155';
+                    drawRoundedRect(GRID_OFFSET_X + c * CELL_SIZE, GRID_OFFSET_Y + r * CELL_SIZE, CELL_SIZE - 4, CELL_SIZE - 4, 8);
+                }
+            }
+
+            // 2. رسم القطع في اليد
+            handPieces.forEach(p => {
+                ctx.fillStyle = p.c;
+                const size = CELL_SIZE * p.scale;
+                p.s.forEach((row, ri) => {
+                    row.forEach((cell, ci) => {
+                        if (cell) {
+                            drawRoundedRect(p.x + ci * size, p.y + ri * size, size - 3, size - 3, 6);
+                        }
+                    });
+                });
+            });
+
+            // 3. تحديث ورسم الجسيمات (الإصلاح المهم)
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.05;
+
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                } else {
+                    ctx.fillStyle = p.c;
+                    ctx.globalAlpha = p.alpha;
+                    ctx.fillRect(p.x, p.y, 6, 6);
+                    ctx.globalAlpha = 1;
+                }
+            }
+        }
+
+        function drawRoundedRect(x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, r);
+            ctx.fill();
+        }
+
+        // التعامل مع السحب (Mouse & Touch)
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); start(e.touches[0]); });
+
+        function start(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            handPieces.forEach(p => {
+                const size = CELL_SIZE * p.scale;
+                if (mx > p.x && mx < p.x + p.w * size && my > p.y && my < p.y + p.h * size) {
+                    dragging = p;
+                    p.scale = 1.0;
+                }
+            });
+        }
+
+        window.addEventListener('mousemove', move);
+        window.addEventListener('touchmove', e => { if(dragging) move(e.touches[0]); });
+
+        function move(e) {
+            if (!dragging) return;
+            const rect = canvas.getBoundingClientRect();
+            dragging.x = e.clientX - rect.left - (dragging.w * CELL_SIZE) / 2;
+            dragging.y = e.clientY - rect.top - (dragging.h * CELL_SIZE) / 2;
+        }
+
+        window.addEventListener('mouseup', end);
+        window.addEventListener('touchend', end);
+
+        function end() {
+            if (!dragging) return;
+
+            let gx = Math.round((dragging.x - GRID_OFFSET_X) / CELL_SIZE);
+            let gy = Math.round((dragging.y - GRID_OFFSET_Y) / CELL_SIZE);
+
+            if (canPlace(dragging, gx, gy)) {
+                place(dragging, gx, gy);
+                handPieces = handPieces.filter(p => p !== dragging);
+                checkLines();
+                if (handPieces.length === 0) spawnHand();
+            } else {
+                dragging.x = dragging.origX;
+                dragging.y = dragging.origY;
+                dragging.scale = 0.7;
+            }
+            dragging = null;
+            checkGameOver();
+        }
+
+        function canPlace(p, gx, gy) {
+            if (gx < 0 || gy < 0 || gx + p.w > GRID_SIZE || gy + p.h > GRID_SIZE) return false;
+            for (let r = 0; r < p.h; r++) {
+                for (let c = 0; c < p.w; c++) {
+                    if (p.s[r][c] && grid[gy + r][gx + c]) return false;
+                }
+            }
+            return true;
+        }
+
+        function place(p, gx, gy) {
+            for (let r = 0; r < p.h; r++) {
+                for (let c = 0; c < p.w; c++) {
+                    if (p.s[r][c]) grid[gy + r][gx + c] = p.c;
+                }
+            }
+            score += 20;
+            updateScore();
+        }
+
+        function checkLines() {
+            let fullRows = [];
+            let fullCols = [];
+
+            for (let i = 0; i < GRID_SIZE; i++) {
+                if (grid[i].every(c => c !== 0)) fullRows.push(i);
+                if (grid.every(row => row[i] !== 0)) fullCols.push(i);
+            }
+
+            fullRows.forEach(r => {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    createEffect(GRID_OFFSET_X + c * CELL_SIZE, GRID_OFFSET_Y + r * CELL_SIZE, grid[r][c]);
+                    grid[r][c] = 0;
+                }
+            });
+
+            fullCols.forEach(c => {
+                for (let r = 0; r < GRID_SIZE; r++) {
+                    if (grid[r][c] !== 0) {
+                        createEffect(GRID_OFFSET_X + c * CELL_SIZE, GRID_OFFSET_Y + r * CELL_SIZE, grid[r][c]);
+                        grid[r][c] = 0;
+                    }
+                }
+            });
+
+            if (fullRows.length || fullCols.length) {
+                score += (fullRows.length + fullCols.length) * 100;
+                updateScore();
+            }
+        }
+
+        function createEffect(x, y, color) {
+            for (let i = 0; i < 6; i++) {
+                particles.push({
+                    x: x + CELL_SIZE/2, 
+                    y: y + CELL_SIZE/2,
+                    vx: (Math.random() - 0.5) * 8, 
+                    vy: (Math.random() - 0.5) * 8,
+                    alpha: 1, 
+                    c: color
+                });
+            }
+        }
+
+        function checkGameOver() {
+            const possible = handPieces.some(p => {
+                for (let r = 0; r <= GRID_SIZE - p.h; r++) {
+                    for (let c = 0; c <= GRID_SIZE - p.w; c++) {
+                        if (canPlace(p, c, r)) return true;
+                    }
+                }
+                return false;
+            });
+
+            if (!possible && handPieces.length > 0) {
+                gameOverUI.style.display = 'flex';
+                document.getElementById('finalScore').innerText = `سكورك: ${score}`;
+            }
+        }
+
+        function updateScore() { scoreDisplay.innerText = score; }
+        function resetGame() { init(); }
+        function animate() { draw(); requestAnimationFrame(animate); }
+
+        init();
+    </script>
+</body>
+</html>
