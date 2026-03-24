@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Blast Pro - Music Edition</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --grid-panel: #1e293b;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        .mute-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid var(--accent);
+            padding: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 1000;
+            font-size: 1.2rem;
+            transition: 0.3s;
+        }
+
+        .score-container {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        #score {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--accent);
+        }
+
+        #bestScore {
+            font-size: 1rem;
+            opacity: 0.6;
+        }
+
+        #game-wrapper {
+            position: relative;
+            background: var(--grid-panel);
+            padding: 15px;
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas { border-radius: 12px; cursor: grab; }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 24px;
+            z-index: 100;
+        }
+
+        button.retry {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <button class="mute-btn" id="muteBtn">🔊</button>
+
+    <div class="score-container">
+        <div id="score">0</div>
+        <div id="bestScore">أفضل نتيجة: 0</div>
+    </div>
+    
+    <div id="game-wrapper">
+        <canvas id="gameCanvas" width="400" height="620"></canvas>
+        <div id="gameOver" class="overlay">
+            <h2 style="font-size: 2rem;">انتهت اللعبة!</h2>
+            <p id="finalScore" style="font-size: 1.5rem; margin-bottom: 20px;"></p>
+            <button class="retry" onclick="resetGame()">إعادة المحاولة</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // --- إعدادات الصوت ---
+        const bgMusic = new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-17.mp3');
+        bgMusic.loop = true;
+        bgMusic.volume = 0.2;
+
+        const sfx = {
+            place: new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'),
+            clear: new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'),
+            lose: new Audio('https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3')
+        };
+
+        let isMuted = false;
+        document.getElementById('muteBtn').onclick = () => {
+            isMuted = !isMuted;
+            bgMusic.muted = isMuted;
+            Object.values(sfx).forEach(s => s.muted = isMuted);
+            document.getElementById('muteBtn').innerText = isMuted ? '🔇' : '🔊';
+        };
+
+        // بدوره تبدأ الموسيقى مع أول لمسة للشاشة (سياسة المتصفحات)
+        window.addEventListener('touchstart', () => bgMusic.play(), {once: true});
+        window.addEventListener('mousedown', () => bgMusic.play(), {once: true});
+
+        const GRID_SIZE = 8;
+        const CELL_SIZE = 46;
+        const GRID_OFFSET_X = 16;
+        const GRID_OFFSET_Y = 16;
+        const SPAWN_Y = 440;
+
+        let score = 0;
+        let high = localStorage.getItem('bb_high') || 0;
+        let grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+        let handPieces = [];
+        let dragging = null;
+        let particles = [];
+
+        const SHAPES = [
+            { s: [[1,1],[1,1]], c: '#f87171' },
+            { s: [[1,1,1,1]], c: '#60a5fa' },
+            { s: [[1,1,1],[0,1,0]], c: '#a78bfa' },
+            { s: [[1,1,1]], c: '#4ade80' },
+            { s: [[1]], c: '#f472b6' }
+        ];
+
+        function init() {
+            score = 0;
+            grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+            document.getElementById('gameOver').style.display = 'none';
+            document.getElementById('bestScore').innerText = `أفضل نتيجة: ${high}`;
+            updateScore();
+            spawnHand();
+            animate();
+        }
+
+        function spawnHand() {
+            handPieces = [];
+            for (let i = 0; i < 3; i++) {
+                const temp = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                handPieces.push({ ...temp, x: 35+(i*125), y: SPAWN_Y, origX: 35+(i*125), origY: SPAWN_Y, w: temp.s[0].length, h: temp.s.length, scale: 0.7 });
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    ctx.fillStyle = grid[r][c] || '#334155';
+                    ctx.beginPath(); ctx.roundRect(GRID_OFFSET_X + c*CELL_SIZE, GRID_OFFSET_Y + r*CELL_SIZE, CELL_SIZE-4, CELL_SIZE-4, 8); ctx.fill();
+                }
+            }
+            handPieces.forEach(p => {
+                ctx.fillStyle = p.c;
+                const sz = CELL_SIZE * p.scale;
+                p.s.forEach((row, ri) => row.forEach((cell, ci) => {
+                    if(cell) { ctx.beginPath(); ctx.roundRect(p.x + ci*sz, p.y + ri*sz, sz-3, sz-3, 6); ctx.fill(); }
+                }));
+            });
+            particles.forEach((p, i) => {
+                p.x += p.vx; p.y += p.vy; p.alpha -= 0.05;
+                if(p.alpha <= 0) particles.splice(i,1);
+                else { ctx.globalAlpha = p.alpha; ctx.fillStyle = p.c; ctx.fillRect(p.x, p.y, 5, 5); }
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('touchstart', e => start(e.touches[0]));
+        window.addEventListener('mousemove', move);
+        window.addEventListener('touchmove', e => move(e.touches[0]));
+        window.addEventListener('mouseup', end);
+        window.addEventListener('touchend', end);
+
+        function start(e) {
+            const r = canvas.getBoundingClientRect();
+            const mx = e.clientX - r.left, my = e.clientY - r.top;
+            handPieces.forEach(p => {
+                const sz = CELL_SIZE * p.scale;
+                if(mx > p.x && mx < p.x + p.w*sz && my > p.y && my < p.y + p.h*sz) { dragging = p; p.scale = 1.0; }
+            });
+        }
+
+        function move(e) {
+            if(!dragging) return;
+            const r = canvas.getBoundingClientRect();
+            dragging.x = e.clientX - r.left - (dragging.w * CELL_SIZE)/2;
+            dragging.y = e.clientY - r.top - (dragging.h * CELL_SIZE) * 1.2;
+        }
+
+        function end() {
+            if(!dragging) return;
+            let gx = Math.round((dragging.x - GRID_OFFSET_X)/CELL_SIZE), gy = Math.round((dragging.y - GRID_OFFSET_Y)/CELL_SIZE);
+            if(canPlace(dragging, gx, gy)) {
+                place(dragging, gx, gy);
+                sfx.place.play();
+                handPieces = handPieces.filter(p => p !== dragging);
+                checkLines();
+                if(handPieces.length === 0) spawnHand();
+            } else { dragging.x = dragging.origX; dragging.y = dragging.origY; dragging.scale = 0.7; }
+            dragging = null; checkGameOver();
+        }
+
+        function canPlace(p, gx, gy) {
+            if(gx < 0 || gy < 0 || gx + p.w > GRID_SIZE || gy + p.h > GRID_SIZE) return false;
+            for(let r=0; r<p.h; r++) for(let c=0; c<p.w; c++) if(p.s[r][c] && grid[gy+r][gx+c]) return false;
+            return true;
+        }
+
+        function place(p, gx, gy) {
+            for(let r=0; r<p.h; r++) for(let c=0; c<p.w; c++) if(p.s[r][c]) grid[gy+r][gx+c] = p.c;
+            score += 20; updateScore();
+        }
+
+        function checkLines() {
+            let rs = [], cs = [];
+            for(let i=0; i<GRID_SIZE; i++) {
+                if(grid[i].every(c => c!==0)) rs.push(i);
+                if(grid.every(row => row[i]!==0)) cs.push(i);
+            }
+            if(rs.length || cs.length) {
+                sfx.clear.play();
+                rs.forEach(r => { for(let c=0; c<GRID_SIZE; c++) { createP(GRID_OFFSET_X+c*CELL_SIZE, GRID_OFFSET_Y+r*CELL_SIZE, grid[r][c]); grid[r][c]=0; } });
+                cs.forEach(c => { for(let r=0; r<GRID_SIZE; r++) { if(grid[r][c]) { createP(GRID_OFFSET_X+c*CELL_SIZE, GRID_OFFSET_Y+r*CELL_SIZE, grid[r][c]); grid[r][c]=0; } } });
+                score += (rs.length + cs.length) * 100; updateScore();
+            }
+        }
+
+        function createP(x, y, c) { for(let i=0; i<6; i++) particles.push({ x: x+20, y: y+20, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, alpha: 1, c: c }); }
+
+        function checkGameOver() {
+            const can = handPieces.some(p => {
+                for(let r=0; r<=GRID_SIZE-p.h; r++) for(let c=0; c<=GRID_SIZE-p.w; c++) if(canPlace(p, c, r)) return true;
+                return false;
+            });
+            if(!can && handPieces.length > 0) {
+                sfx.lose.play();
+                if(score > high) { high = score; localStorage.setItem('bb_high', high); }
+                document.getElementById('gameOver').style.display = 'flex';
+                document.getElementById('finalScore').innerText = `سكورك: ${score}`;
+            }
+        }
+
+        function updateScore() { document.getElementById('score').innerText = score; }
+        function resetGame() { init(); }
+        function animate() { draw(); requestAnimationFrame(animate); }
+
+        init();
+    </script>
+</body>
+</html>
