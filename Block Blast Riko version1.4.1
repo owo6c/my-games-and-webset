@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Block Blast: Enterprise v2.1 (Fixed)</title>
+    <style>
+        :root {
+            --bg: #020617;
+            --panel: #1e293b;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(2, 6, 23, 0.98);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .hidden { display: none !important; }
+        #score-val {
+            font-size: 4rem;
+            font-weight: 900;
+            background: linear-gradient(to bottom, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        #canvas-container {
+            position: relative;
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 35px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: transform 0.1s ease; /* للهزة */
+        }
+        canvas { border-radius: 20px; cursor: grab; background: #111827; }
+        .btn-premium {
+            background: linear-gradient(135deg, var(--accent), #818cf8);
+            color: var(--bg);
+            padding: 20px 60px;
+            font-size: 1.5rem;
+            font-weight: 800;
+            border-radius: 20px;
+            cursor: pointer;
+            border: none;
+        }
+        .mute-toggle {
+            position: absolute;
+            top: 30px; right: 30px;
+            background: rgba(255,255,255,0.05);
+            color: white;
+            padding: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <button class="mute-toggle" id="muteController">🔊</button>
+
+    <div id="screen-start" class="ui-overlay">
+        <h1 style="font-size: 4rem; margin:0;">BLOCK BLAST</h1>
+        <p style="margin-bottom: 40px; opacity: 0.5;">ENTERPRISE EDITION V2.1</p>
+        <button class="btn-premium" onclick="GameManager.start()">ابدأ اللعب</button>
+    </div>
+
+    <div id="screen-over" class="ui-overlay hidden">
+        <h2 style="font-size: 3rem; color: #ef4444;">GAME OVER</h2>
+        <div id="final-stats" style="margin-bottom: 30px; font-size: 1.5rem;"></div>
+        <button class="btn-premium" onclick="GameManager.restart()">إعادة المحاولة</button>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 15px;">
+        <div id="score-val">0</div>
+        <div style="opacity:0.6" id="best-val">BEST: 0</div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="mainCanvas" width="400" height="620"></canvas>
+    </div>
+
+    <script>
+        // --- محرك الصوت ---
+        const AudioEngine = {
+            bg: new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-17.mp3'),
+            sfx: {
+                place: new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'),
+                clear: new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'),
+                lose: new Audio('https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3')
+            },
+            muted: false,
+            init() {
+                this.bg.loop = true; this.bg.volume = 0.1;
+                document.getElementById('muteController').onclick = () => this.toggle();
+            },
+            toggle() {
+                this.muted = !this.muted;
+                this.bg.muted = this.muted;
+                Object.values(this.sfx).forEach(s => s.muted = this.muted);
+                document.getElementById('muteController').innerText = this.muted ? '🔇' : '🔊';
+            },
+            play(n) { if(this.sfx[n]) this.sfx[n].play().catch(()=>{}); }
+        };
+
+        // --- نظام الجسيمات ---
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.alpha = 1;
+            }
+            update() { this.x += this.vx; this.y += this.vy; this.alpha -= 0.03; }
+            draw(ctx) {
+                ctx.save(); // حفظ الحالة
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 4, 0, Math.PI*2);
+                ctx.fill();
+                ctx.restore(); // استعادة الحالة لمنع بقاء الشادو
+            }
+        }
+
+        // --- نظام القطع ---
+        class Piece {
+            constructor(temp, idx) {
+                this.matrix = temp.s; this.color = temp.c;
+                this.w = this.matrix[0].length; this.h = this.matrix.length;
+                this.idx = idx; this.reset();
+            }
+            reset() {
+                this.scale = 0.7; this.x = 45 + (this.idx * 120); this.y = 460;
+                this.isDragging = false;
+            }
+        }
+
+        // --- مدير اللعبة الرئيسي ---
+        const GameManager = {
+            canvas: null, ctx: null, grid: [], pieces: [], particles: [],
+            score: 0, high: localStorage.getItem('bb_pro_high') || 0,
+            gridSize: 8, cellSize: 46, offX: 16, offY: 16,
+            dragPiece: null,
+
+            shapes: [
+                { s: [[1,1],[1,1]], c: '#ff4d6d' },
+                { s: [[1,1,1,1]], c: '#00b4d8' },
+                { s: [[1,1,1],[0,1,0]], c: '#70e000' },
+                { s: [[1,1,1]], c: '#ffb703' },
+                { s: [[1,1,0],[0,1,1]], c: '#9d4edd' }
+            ],
+
+            init() {
+                this.canvas = document.getElementById('mainCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                AudioEngine.init(); this.setupInputs();
+                this.updateUI();
+            },
+
+            start() {
+                document.getElementById('screen-start').classList.add('hidden');
+                AudioEngine.bg.play().catch(()=>{});
+                this.resetGame();
+            },
+
+            resetGame() {
+                this.score = 0;
+                this.grid = Array.from({length: 8}, () => Array(8).fill(0));
+                this.particles = []; this.spawnPieces();
+                this.loop();
+            },
+
+            spawnPieces() {
+                this.pieces = [];
+                for(let i=0; i<3; i++) {
+                    const t = this.shapes[Math.floor(Math.random()*this.shapes.length)];
+                    this.pieces.push(new Piece(t, i));
+                }
+            },
+
+            setupInputs() {
+                const getPos = (e) => {
+                    const r = this.canvas.getBoundingClientRect();
+                    const t = e.touches ? e.touches[0] : e;
+                    return { x: t.clientX - r.left, y: t.clientY - r.top };
+                };
+                this.canvas.onmousedown = this.canvas.ontouchstart = (e) => {
+                    if(e.type === 'touchstart') e.preventDefault();
+                    const p = getPos(e);
+                    this.pieces.forEach(pc => {
+                        const sz = this.cellSize * pc.scale;
+                        if(p.x > pc.x && p.x < pc.x + pc.w*sz && p.y > pc.y && p.y < pc.y + pc.h*sz) {
+                            this.dragPiece = pc; pc.isDragging = true; pc.scale = 1.0;
+                        }
+                    });
+                };
+                window.onmousemove = window.ontouchmove = (e) => {
+                    if(!this.dragPiece) return;
+                    const p = getPos(e);
+                    this.dragPiece.x = p.x - (this.dragPiece.w * this.cellSize)/2;
+                    this.dragPiece.y = p.y - (this.dragPiece.h * this.cellSize) * 1.3;
+                };
+                window.onmouseup = window.ontouchend = () => {
+                    if(!this.dragPiece) return;
+                    const pc = this.dragPiece;
+                    let gx = Math.round((pc.x - this.offX)/this.cellSize);
+                    let gy = Math.round((pc.y - this.offY)/this.cellSize);
+                    if(this.canPlace(pc, gx, gy)) {
+                        this.place(pc, gx, gy);
+                        this.pieces = this.pieces.filter(i => i !== pc);
+                        this.checkLines();
+                        if(this.pieces.length === 0) this.spawnPieces();
+                    } else { pc.reset(); }
+                    this.dragPiece = null; this.checkGameOver();
+                };
+            },
+
+            canPlace(pc, gx, gy) {
+                if(gx < 0 || gy < 0 || gx + pc.w > 8 || gy + pc.h > 8) return false;
+                for(let r=0; r<pc.h; r++) for(let c=0; c<pc.w; c++)
+                    if(pc.matrix[r][c] && this.grid[gy+r][gx+c]) return false;
+                return true;
+            },
+
+            place(pc, gx, gy) {
+                for(let r=0; r<pc.h; r++) for(let c=0; c<pc.w; c++)
+                    if(pc.matrix[r][c]) this.grid[gy+r][gx+c] = pc.color;
+                this.score += 20; AudioEngine.play('place'); this.updateUI();
+            },
+
+            checkLines() {
+                let rows = [], cols = [];
+                for(let i=0; i<8; i++) {
+                    if(this.grid[i].every(cl => cl !== 0)) rows.push(i);
+                    let cf = true; for(let r=0; r<8; r++) if(this.grid[r][i] === 0) cf = false;
+                    if(cf) cols.push(i);
+                }
+                if(rows.length || cols.length) {
+                    this.shake(); AudioEngine.play('clear');
+                    rows.forEach(r => { for(let c=0; c<8; c++) { this.boom(c,r); this.grid[r][c]=0; } });
+                    cols.forEach(c => { for(let r=0; r<8; r++) { if(this.grid[r][c]) { this.boom(c,r); this.grid[r][c]=0; } } });
+                    this.score += (rows.length + cols.length) * 100; this.updateUI();
+                }
+            },
+
+            boom(c, r) {
+                const color = this.grid[r][c];
+                for(let i=0; i<8; i++) this.particles.push(new Particle(this.offX + c*this.cellSize + 20, this.offY + r*this.cellSize + 20, color));
+            },
+
+            shake() {
+                const el = document.getElementById('canvas-container');
+                el.style.transform = 'translate(5px, 5px)';
+                setTimeout(() => el.style.transform = 'translate(-5px, -5px)', 50);
+                setTimeout(() => el.style.transform = 'translate(0, 0)', 100);
+            },
+
+            checkGameOver() {
+                if(this.pieces.length === 0) return;
+                const stuck = this.pieces.every(pc => {
+                    for(let r=0; r <= 8 - pc.h; r++) for(let c=0; c <= 8 - pc.w; c++)
+                        if(this.canPlace(pc, c, r)) return false;
+                    return true;
+                });
+                if(stuck) {
+                    AudioEngine.play('lose');
+                    if(this.score > this.high) { this.high = this.score; localStorage.setItem('bb_pro_high', this.high); }
+                    document.getElementById('screen-over').classList.remove('hidden');
+                    document.getElementById('final-stats').innerHTML = `SCORE: ${this.score}<br>BEST: ${this.high}`;
+                }
+            },
+
+            updateUI() {
+                document.getElementById('score-val').innerText = this.score;
+                document.getElementById('best-val').innerText = `BEST: ${this.high}`;
+            },
+
+            draw() {
+                this.ctx.clearRect(0, 0, 400, 620);
+                // رسم الشبكة والقطع المستقرة
+                for(let r=0; r<8; r++) {
+                    for(let c=0; c<8; c++) {
+                        this.ctx.fillStyle = this.grid[r][c] || 'rgba(51, 65, 85, 0.3)';
+                        this.ctx.beginPath(); this.ctx.roundRect(this.offX + c*this.cellSize, this.offY + r*this.cellSize, 42, 42, 8); this.ctx.fill();
+                    }
+                }
+                // رسم الجسيمات (مع ضمان تنظيف الشادو)
+                this.particles.forEach((p, i) => {
+                    p.update(); p.draw(this.ctx);
+                    if(p.alpha <= 0) this.particles.splice(i, 1);
+                });
+                // رسم قطع اليد (الشادو هنا فقط للقطعة المسحوبة)
+                this.pieces.forEach(pc => {
+                    this.ctx.save(); // حماية باقي الشاشة من الشادو
+                    this.ctx.fillStyle = pc.color;
+                    const sz = this.cellSize * pc.scale;
+                    if(pc.isDragging) {
+                        this.ctx.shadowBlur = 20; this.ctx.shadowColor = pc.color;
+                    }
+                    pc.matrix.forEach((row, rIdx) => {
+                        row.forEach((cell, cIdx) => {
+                            if(cell) {
+                                this.ctx.beginPath(); 
+                                this.ctx.roundRect(pc.x + cIdx*sz, pc.y + rIdx*sz, sz-3, sz-3, 6); 
+                                this.ctx.fill();
+                            }
+                        });
+                    });
+                    this.ctx.restore(); // إغلاق الشادو فوراً
+                });
+            },
+
+            loop() {
+                this.draw();
+                if(document.getElementById('screen-over').classList.contains('hidden'))
+                    requestAnimationFrame(() => this.loop());
+            },
+
+            restart() { document.getElementById('screen-over').classList.add('hidden'); this.resetGame(); }
+        };
+
+        window.onload = () => GameManager.init();
+    </script>
+</body>
+</html>
